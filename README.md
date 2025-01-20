@@ -26,7 +26,7 @@ Ensure that:
 ## Usage
 1. Run the script:
    ```bash
-   python clipboard_to_speech.py
+   python clip_read.py
    ```
 2. Copy any text to your clipboard.
 3. Press `Ctrl+Shift+Space` to hear the clipboard content read aloud.
