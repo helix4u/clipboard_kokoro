@@ -6,14 +6,18 @@ from pydub.playback import play
 import io
 import sounddevice as sd
 import numpy as np
+import threading
+import os
 
 # Kokoro-FastAPI Configuration
 API_URL = "http://localhost:8880/v1/audio/speech"
 VOICE = "af_sky+af+af_nicole"  # Replace with your desired voice
 RESPONSE_FORMAT = "mp3"  # Audio format
 
-# Global variable for the selected audio device
+# Global variables for playback management
 selected_device = None
+playback_thread = None
+cancel_playback = threading.Event()
 
 def list_audio_devices():
     """List all audio output devices."""
@@ -25,25 +29,37 @@ def list_audio_devices():
     return output_devices
 
 def play_on_device(audio, device_id):
-    """Play audio on a specific device."""
-    # Convert audio to a NumPy array and normalize it to range [-1.0, 1.0]
+    """Play audio on a specific device using sounddevice."""
+    # Convert audio to a NumPy array and normalize to range [-1.0, 1.0]
     audio_array = np.array(audio.get_array_of_samples(), dtype=np.float32) / (2 ** 15)
-    
-    # Set audio playback settings
     audio_format = audio.frame_rate
     audio_channels = audio.channels
 
-    # Configure the sounddevice stream to use the specified device
+    # Configure and play audio using sounddevice
     with sd.OutputStream(
         samplerate=audio_format,
         device=device_id,
         channels=audio_channels,
-        dtype='float32'
+        dtype="float32",
+        blocksize=1024  # Larger block size reduces overhead
     ) as stream:
         stream.write(audio_array)
 
+def save_audio_file(audio_content, filename="output.mp3"):
+    """Save audio content to a file."""
+    os.makedirs("saved_audio", exist_ok=True)  # Create a folder for audio files
+    filepath = os.path.join("saved_audio", filename)
+    with open(filepath, "wb") as f:
+        f.write(audio_content)
+    print(f"Audio saved to {filepath}")
+    return filepath
+
 def read_clipboard_aloud():
+    global playback_thread
     try:
+        # Cancel any ongoing playback before starting new playback
+        stop_playback()
+
         # Get clipboard content
         clipboard_content = pyperclip.paste()
         if not clipboard_content.strip():
@@ -69,19 +85,39 @@ def read_clipboard_aloud():
         # Load audio for playback
         audio = AudioSegment.from_file(io.BytesIO(response.content), format="mp3")
         
-        # Play audio on the selected device or default
-        if selected_device is not None:
-            play_on_device(audio, selected_device)
-        else:
-            play(audio)
+        # Save the audio file locally
+        save_audio_file(response.content, filename="clipboard_output.mp3")
         
+        # Reset cancel playback flag
+        cancel_playback.clear()
+        
+        # Start playback in a separate thread
+        def playback():
+            if selected_device is not None:
+                play_on_device(audio, selected_device)
+            else:
+                play(audio)  # Direct playback using pydub
+
+        playback_thread = threading.Thread(target=playback, daemon=True)
+        playback_thread.start()
+
     except Exception as e:
         print(f"An error occurred: {e}")
+
+def stop_playback():
+    """Cancel ongoing audio playback."""
+    global playback_thread
+    if playback_thread and playback_thread.is_alive():
+        print("Audio playback cancelled.")
+        cancel_playback.set()
+        playback_thread.join()  # Wait for the thread to finish
+        playback_thread = None  # Reset the thread for reuse
 
 def main():
     global selected_device
     print("ctrl+shift+space to read the clipboard aloud.")
-    
+    print("ctrl+shift+esc to stop playback.")
+
     # Ask user whether to use the default or a specified device
     use_default_device = input("Do you want to use the default audio device? (y/n): ").strip().lower()
     if use_default_device == 'n':
@@ -98,9 +134,10 @@ def main():
             print("Invalid input. Default audio device will be used.")
             selected_device = None
     
-    # Add hotkey for reading clipboard aloud
+    # Add hotkeys
     keyboard.add_hotkey("ctrl+shift+space", read_clipboard_aloud)
-    keyboard.wait("Shift+esc")  # Wait for the user to press ESC to exit
+    keyboard.add_hotkey("ctrl+shift+esc", stop_playback)
+    keyboard.wait("esc")  # Wait for the user to press ESC to exit
 
 if __name__ == "__main__":
     main()
