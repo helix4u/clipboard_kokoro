@@ -9,7 +9,7 @@ import numpy as np
 
 # Kokoro-FastAPI Configuration
 API_URL = "http://localhost:8880/v1/audio/speech"
-VOICE = "af_sky+af_bella"  # Replace with your desired voice
+VOICE = "af_sky+af+af_nicole"  # Replace with your desired voice
 RESPONSE_FORMAT = "mp3"  # Audio format
 
 # Global variable for the selected audio device
@@ -58,7 +58,8 @@ def read_clipboard_aloud():
             json={
                 "input": clipboard_content,
                 "voice": VOICE,
-                "response_format": RESPONSE_FORMAT
+                "response_format": RESPONSE_FORMAT,
+                "speed": 1.3
             }
         )
         if response.status_code != 200:
