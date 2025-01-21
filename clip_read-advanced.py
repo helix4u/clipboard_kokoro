@@ -50,9 +50,9 @@ def play_on_device(audio, device_id):
         device=device_id,
         channels=audio_channels,
         dtype="float32",
-        blocksize=2048,
+        blocksize=8192,
     ) as stream:
-        for chunk in np.array_split(audio_array, len(audio_array) // 2048):
+        for chunk in np.array_split(audio_array, len(audio_array) // 8192):
             if exit_event.is_set():  # Stop playback if exit event is triggered
                 break
             stream.write(chunk)
