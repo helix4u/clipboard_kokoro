@@ -2,11 +2,8 @@ import pyperclip
 import requests
 import keyboard
 from pydub import AudioSegment
-from pydub.playback import play  # Properly import the play function
+import pyaudio
 import io
-import sounddevice as sd
-import numpy as np
-import threading
 import os
 import sys
 
@@ -15,55 +12,44 @@ API_URL = "http://localhost:8880/v1/audio/speech"
 VOICE = "af_sky+af+af_nicole"  # Replace with your desired voice
 RESPONSE_FORMAT = "mp3"  # Audio format
 
-# Global variables for playback management
+# Global variable for selected audio output device
 selected_device = None
-playback_thread = None
-exit_event = threading.Event()  # Used to signal threads to exit
 
 
 def list_audio_devices():
-    """List all audio output devices."""
+    """List all available audio output devices."""
+    p = pyaudio.PyAudio()
     print("\nAvailable Audio Devices:")
-    devices = sd.query_devices()
-    output_devices = {idx: device for idx, device in enumerate(devices) if device['max_output_channels'] > 0}
-    for idx, device in output_devices.items():
-        print(f"{idx}: {device['name']}")
-    return output_devices
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        if info["maxOutputChannels"] > 0:
+            print(f"{i}: {info['name']}")
+    p.terminate()
 
 
-def play_on_device(audio, device_id):
-    """Play audio on a specific device using sounddevice."""
-    audio_array = np.array(audio.get_array_of_samples(), dtype=np.float32) / (2**15)
-    audio_format = audio.frame_rate
-    audio_channels = audio.channels
+def play_audio(audio, device_id=None):
+    """Play audio using pyaudio on a specified output device."""
+    p = pyaudio.PyAudio()
+    stream = None
 
-    device_info = sd.query_devices(device_id)
-    device_sample_rate = int(device_info["default_samplerate"])
+    try:
+        # Configure audio stream
+        stream = p.open(
+            format=pyaudio.paInt16,
+            channels=audio.channels,
+            rate=audio.frame_rate,
+            output=True,
+            output_device_index=device_id,
+        )
 
-    if audio_format != device_sample_rate:
-        print(f"Resampling audio from {audio_format} Hz to {device_sample_rate} Hz")
-        audio_array = resample_audio(audio_array, audio_format, device_sample_rate)
-        audio_format = device_sample_rate
+        # Write audio data to stream
+        stream.write(audio.raw_data)
 
-    with sd.OutputStream(
-        samplerate=audio_format,
-        device=device_id,
-        channels=audio_channels,
-        dtype="float32",
-        blocksize=8192,
-    ) as stream:
-        for chunk in np.array_split(audio_array, len(audio_array) // 8192):
-            if exit_event.is_set():  # Stop playback if exit event is triggered
-                break
-            stream.write(chunk)
-
-
-def resample_audio(audio_array, input_rate, output_rate):
-    """Resample audio to match the output device's sample rate."""
-    from scipy.signal import resample
-
-    num_samples = int(len(audio_array) * (output_rate / input_rate))
-    return resample(audio_array, num_samples)
+    finally:
+        if stream:
+            stream.stop_stream()
+            stream.close()
+        p.terminate()
 
 
 def save_audio_file(audio_content, filename="output.mp3"):
@@ -77,11 +63,8 @@ def save_audio_file(audio_content, filename="output.mp3"):
 
 
 def read_clipboard_aloud():
-    global playback_thread
+    global selected_device
     try:
-        if exit_event.is_set():
-            return
-
         clipboard_content = pyperclip.paste()
         if not clipboard_content.strip():
             print("Clipboard is empty.")
@@ -89,6 +72,7 @@ def read_clipboard_aloud():
 
         print(f"Reading aloud: {clipboard_content}")
 
+        # Send text to Kokoro API for speech generation
         response = requests.post(
             API_URL,
             json={
@@ -102,34 +86,21 @@ def read_clipboard_aloud():
             print(f"Error: {response.json().get('message', 'Unknown error')}")
             return
 
+        # Load audio and save locally
         audio = AudioSegment.from_file(io.BytesIO(response.content), format="mp3")
         save_audio_file(response.content, filename="clipboard_output.mp3")
 
-        def playback():
-            if selected_device is not None:
-                play_on_device(audio, selected_device)
-            else:
-                play(audio)
-
-        playback_thread = threading.Thread(target=playback, daemon=True)
-        playback_thread.start()
+        # Play audio using the selected device
+        play_audio(audio, device_id=selected_device)
 
     except Exception as e:
         print(f"An error occurred: {e}")
 
 
 def close_program():
-    """Close the program safely."""
-    global playback_thread
+    """Close the program."""
     print("Exiting the program...")
-    exit_event.set()  # Signal all threads to exit
-
-    # Ensure playback thread is terminated
-    if playback_thread and playback_thread.is_alive():
-        playback_thread.join(timeout=1)
-
-    # If playback thread hangs, forcefully terminate the process
-    os._exit(0)
+    sys.exit(0)  # Exit immediately
 
 
 def main():
@@ -137,27 +108,23 @@ def main():
     print("ctrl+shift+space to read the clipboard aloud.")
     print("Shift+Esc to close the program.")
 
+    # Ask if the user wants to select an output device
     use_default_device = input("Do you want to use the default audio device? (y/n): ").strip().lower()
     if use_default_device == "n":
-        available_devices = list_audio_devices()
+        list_audio_devices()
         try:
-            device_id = int(input("\nEnter the ID of the audio device to use: ").strip())
-            if device_id in available_devices:
-                selected_device = device_id
-                print(f"Audio device set to: {available_devices[device_id]['name']}")
-            else:
-                print("Invalid device ID. Default audio device will be used.")
-                selected_device = None
+            selected_device = int(input("\nEnter the ID of the audio device to use: ").strip())
+            print(f"Selected audio device: {selected_device}")
         except ValueError:
-            print("Invalid input. Default audio device will be used.")
+            print("Invalid input. Using the default audio device.")
             selected_device = None
 
+    # Register hotkeys
     keyboard.add_hotkey("ctrl+shift+space", read_clipboard_aloud)
     keyboard.add_hotkey("shift+esc", close_program)
 
     try:
-        while not exit_event.is_set():
-            pass  # Keep the program running
+        keyboard.wait("shift+esc")  # Wait until the user exits
     except KeyboardInterrupt:
         close_program()
 
