@@ -73,6 +73,7 @@ def read_clipboard_aloud():
         if not clipboard_content.strip():
             print("Clipboard is empty.")
             return
+        clipboard_content = clipboard_content.replace("*", "").replace("#", "")
 
         print(f"Reading aloud: {clipboard_content}")
 
