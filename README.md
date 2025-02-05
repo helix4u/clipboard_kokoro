@@ -18,6 +18,7 @@ Install the required Python libraries:
 ```bash
 pip install pyperclip requests keyboard pydub
 ```
+Your mileage may vary depending on OS, package updates etc. If you have missing modules after install, you can pip install them normally. This is a very basic script that doesn't require much beyond https://github.com/remsky/Kokoro-FastAPI.
 
 Ensure that:
 - The Kokoro-FastAPI service is running locally or is accessible at the configured `API_URL`.
