@@ -19,7 +19,6 @@ selected_device = None
 playback_thread = None
 exit_event = threading.Event()  # Used to signal threads to exit
 
-
 def list_audio_devices():
     """List all audio output devices."""
     print("\nAvailable Audio Devices:")
@@ -28,7 +27,6 @@ def list_audio_devices():
     for idx, device in output_devices.items():
         print(f"{idx}: {device['name']}")
     return output_devices
-
 
 def play_audio(audio, device_id=None):
     """Play audio using the selected device."""
@@ -52,7 +50,6 @@ def play_audio(audio, device_id=None):
     except Exception as e:
         print(f"Error playing audio on device {device_id}: {e}")
 
-
 def save_audio_file(audio_content, filename="output.mp3"):
     """Save audio content to a file."""
     os.makedirs("saved_audio", exist_ok=True)  # Create a folder for audio files
@@ -61,7 +58,6 @@ def save_audio_file(audio_content, filename="output.mp3"):
         f.write(audio_content)
     print(f"Audio saved to {filepath}")
     return filepath
-
 
 def read_clipboard_aloud():
     global playback_thread
@@ -90,8 +86,12 @@ def read_clipboard_aloud():
             print(f"Error: {response.json().get('message', 'Unknown error')}")
             return
 
+        # Load the MP3 with pydub and re-export to fix header metadata
         audio = AudioSegment.from_file(io.BytesIO(response.content), format="mp3")
-        save_audio_file(response.content, filename="clipboard_output.mp3")
+        os.makedirs("saved_audio", exist_ok=True)
+        fixed_audio_path = os.path.join("saved_audio", "clipboard_output_fixed.mp3")
+        audio.export(fixed_audio_path, format="mp3", bitrate="160k")
+        print(f"Audio saved to {fixed_audio_path}")
 
         def playback():
             play_audio(audio, device_id=selected_device)
@@ -101,7 +101,6 @@ def read_clipboard_aloud():
 
     except Exception as e:
         print(f"An error occurred: {e}")
-
 
 def close_program():
     """Close the program safely."""
@@ -113,7 +112,6 @@ def close_program():
         playback_thread.join(timeout=1)
 
     os._exit(0)  # Forcefully terminate the program
-
 
 def main():
     global selected_device
@@ -144,7 +142,6 @@ def main():
             pass  # Keep the program running
     except KeyboardInterrupt:
         close_program()
-
 
 if __name__ == "__main__":
     main()
