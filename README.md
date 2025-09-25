@@ -80,3 +80,7 @@ To run the script, copy some text to the clipboard, press `Ctrl+Shift+Space`, an
 - **Toggle Playback**: `Ctrl+Shift+Space` acts as a smart toggle - starts playback if nothing is playing, pauses if playing, resumes if paused.
 - **Stop Playback**: `Escape` completely stops current playback (cannot resume from this point).
 - **Exit Program**: `Shift+Esc` terminates the program and all playback.
+
+## Support
+
+If the tool is helpful, consider supporting it on [Ko-fi](https://ko-fi.com/gille).
