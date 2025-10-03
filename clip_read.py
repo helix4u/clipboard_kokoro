@@ -98,7 +98,6 @@ def read_clipboard_aloud():
 
         playback_thread = threading.Thread(target=playback, daemon=True)
         playback_thread.start()
-bbb
     except Exception as e:
         print(f"An error occurred: {e}")
 
